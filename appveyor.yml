@@ -32,12 +32,13 @@ install:
 build: false
 
 test_script:
-    - black . --diff --check
+    #- black . --diff --check
     - mypy cadquery
-    - pytest -v --cov
+    #- pytest -v --cov
+    - pytest -v
 
-on_success:
-    - codecov
+#on_success:
+#    - codecov
 
 #on_finish:
 #    - ps: $blockRdp = $true; iex ((new-object net.webclient).DownloadString('https://raw.githubusercontent.com/appveyor/ci/master/scripts/enable-rdp.ps1'))

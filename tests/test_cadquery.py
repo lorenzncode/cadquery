@@ -5546,3 +5546,18 @@ class TestCadQuery(BaseTest):
 
         assert isinstance(vtk, vtkPolyData)
         assert vtk.GetNumberOfPolys() == 2
+
+
+def test_issue_1382():
+
+    path_xyz_tuples = [
+        (0.0, 0.0, 0.0),
+        (1.2, 0.0, 0.2),
+        (2.4, -0.0, 1.6),
+    ]
+    path = Workplane("XY").polyline(path_xyz_tuples, includeCurrent=False)
+
+    r1 = Workplane("YZ").circle(1.315)
+    tube = r1.sweep(path, makeSolid=True)
+
+    assert tube.val().isValid()
