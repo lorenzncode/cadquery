@@ -25,7 +25,10 @@ from vtkmodules.vtkCommonColor import vtkNamedColors
 from vtkmodules.qt.QVTKRenderWindowInteractor import (
     QVTKRenderWindowInteractor,
     QMainWindow,
+    QApplication,
 )
+
+import atexit
 
 DEFAULT_COLOR = [1, 0.8, 0, 1]
 DEFAULT_PT_SIZE = 7.5
@@ -246,13 +249,21 @@ def show(
 
     # show and return
     qwin.setWindowTitle(title)
-    qwin.showMaximized()
+    qwin.show()
 
     widget.Initialize()
     widget.Start()
+
+    if not _cq_vis_windows:
+        atexit.register(_cq_vis_app.exec)
+    _cq_vis_windows.append(qwin)
 
     return qwin
 
 
 # alias
 show_object = show
+
+global _cq_vis_windows, _cq_vis_app
+_cq_vis_windows = []
+_cq_vis_app = QApplication(["QVTKRenderWindowInteractor"])
