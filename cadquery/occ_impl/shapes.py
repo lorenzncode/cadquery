@@ -306,6 +306,7 @@ from OCP.ShapeCustom import ShapeCustom, ShapeCustom_RestrictionParameters
 from OCP.BRepAlgo import BRepAlgo, BRepAlgo_NormalProjection
 
 from OCP.ChFi2d import ChFi2d_FilletAPI  # For Wire.Fillet()
+from OCP.ChFi2d import ChFi2d_ComputationError
 
 from OCP.GeomConvert import GeomConvert_ApproxCurve
 
@@ -3460,14 +3461,25 @@ class Face(Shape):
     def fillet2D(self, radius: float, vertices: Iterable[Vertex]) -> "Face":
         """
         Apply 2D fillet to a face
+
+        If fillet fails, attempt with value = radius - TOLERANCE.
         """
 
-        fillet_builder = BRepFilletAPI_MakeFillet2d(self.wrapped)
+        fillet_builder = BRepFilletAPI_MakeFillet2d()
 
-        for v in vertices:
-            fillet_builder.AddFillet(v.wrapped, radius)
+        for i, radius in enumerate((radius, radius - TOLERANCE)):
+            fillet_builder.Init(self.wrapped)
+            for v in vertices:
+                fillet_builder.AddFillet(v.wrapped, radius)
+            fillet_builder.Build()
 
-        fillet_builder.Build()
+            if fillet_builder.IsDone():
+                break
+            elif fillet_builder.Status() == ChFi2d_ComputationError and i < 1:
+                # retry fillet with value = radius - TOLERANCE
+                continue
+            else:
+                raise ValueError(f"fillet2D failed.  Status: {fillet_builder.Status()}")
 
         return self.__class__(fillet_builder.Shape())
 
