@@ -50,6 +50,7 @@ class Figure:
     actors: BiDict[str, tuple[vtkProp3D, ...]]
     loop: AbstractEventLoop
     thread: Thread
+    _server_future: Optional[Future]
     empty: bool
     active: Optional[str]
     last: Optional[
@@ -60,6 +61,7 @@ class Figure:
 
     _instance = None
     _initialized: bool = False
+    _closed: bool = False
 
     def __new__(cls, *args, **kwargs):
 
@@ -71,8 +73,11 @@ class Figure:
     def __init__(self, port: int = 18081):
 
         if self._initialized:
+            if self._closed:
+                raise RuntimeError("Figure has been shut down")
             return
 
+        self._closed = False
         self.loop = new_event_loop()
         set_event_loop(self.loop)
 
@@ -223,16 +228,21 @@ class Figure:
         self.thread = Thread(target=_run_loop, daemon=True)
         self.thread.start()
 
-        coro = server.start(
-            thread=True,
-            exec_mode="coroutine",
-            port=port,
-            open_browser=False,
-            show_connection_info=False,
-        )
+        self._server_future = None
 
-        if coro:
-            self._run(coro)
+        async def _start_server():
+            coro = server.start(
+                thread=True,
+                exec_mode="coroutine",
+                port=port,
+                open_browser=False,
+                show_connection_info=False,
+            )
+
+            if coro:
+                await coro
+
+        self._server_future = self._run(_start_server())
 
         # prevent reinitialization
         self._initialized = True
@@ -245,6 +255,10 @@ class Figure:
         open_new_tab(f"http://localhost:{port}")
 
     def _run(self, coro) -> Future:
+
+        if self._closed:
+            coro.close()
+            raise RuntimeError("Figure has been shut down")
 
         return run_coroutine_threadsafe(coro, self.loop)
 
@@ -343,6 +357,38 @@ class Figure:
         """
 
         self._run(self._fit())
+
+        return self
+
+    async def _shutdown(self):
+        try:
+            await self.server.stop()
+        finally:
+            self.view.release_resources()
+            self.win.Finalize()
+
+    def _stop_loop(self):
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join()
+        self.loop.close()
+        self._closed = True
+
+    def wait(self):
+        """
+        Block until the figure server exits, then shut down the figure.
+        """
+
+        if self._server_future is not None:
+            try:
+                self._server_future.result()
+            except KeyboardInterrupt:
+                pass
+            finally:
+                try:
+                    self._run(self._shutdown()).result()
+                finally:
+                    self._server_future = None
+                    self._stop_loop()
 
         return self
 
@@ -518,3 +564,12 @@ def fit(*args, **kwargs):
 
     fig = Figure()
     fig.fit(*args, **kwargs)
+
+
+def wait():
+    """
+    Block until the figure server exits, then shut down the figure.
+    """
+
+    fig = Figure()
+    fig.wait()

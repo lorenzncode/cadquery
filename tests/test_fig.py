@@ -1,9 +1,12 @@
 from cadquery import Workplane, Assembly, Sketch, Vector, Location
 from cadquery.func import box
 from cadquery.vis import vtkAxesActor, ctrlPts
-from cadquery.fig import Figure, show, clear, fit
+from cadquery.fig import Figure, show, clear, fit, wait
 
-from pytest import fixture, mark
+from asyncio import run
+from unittest.mock import AsyncMock, Mock
+
+from pytest import fixture, mark, raises
 
 from sys import platform
 
@@ -27,6 +30,119 @@ def showables():
     act = vtkAxesActor()
 
     return (s, s.copy(), wp, assy, sk, ctrl_pts, v, loc, act)
+
+
+def test_fig_wait():
+
+    fig = object.__new__(Figure)
+    server_future = Mock()
+    fig._server_future = server_future
+    shutdown_coro = object()
+    fig._shutdown = Mock(return_value=shutdown_coro)
+    shutdown_future = Mock()
+    fig._run = Mock(return_value=shutdown_future)
+    fig._stop_loop = Mock()
+
+    assert fig.wait() is fig
+    server_future.result.assert_called_once_with()
+    fig._run.assert_called_once_with(shutdown_coro)
+    shutdown_future.result.assert_called_once_with()
+    fig._stop_loop.assert_called_once_with()
+    assert fig._server_future is None
+
+
+def test_fig_wait_stops_server_on_keyboard_interrupt():
+
+    fig = object.__new__(Figure)
+    fig._server_future = Mock()
+    fig._server_future.result.side_effect = KeyboardInterrupt
+    shutdown_coro = object()
+    fig._shutdown = Mock(return_value=shutdown_coro)
+    shutdown_future = Mock()
+    fig._run = Mock(return_value=shutdown_future)
+    fig._stop_loop = Mock()
+
+    assert fig.wait() is fig
+    fig._run.assert_called_once_with(shutdown_coro)
+    shutdown_future.result.assert_called_once_with()
+    fig._stop_loop.assert_called_once_with()
+
+
+def test_fig_wait_cleans_up_on_server_error():
+
+    fig = object.__new__(Figure)
+    fig._server_future = Mock()
+    fig._server_future.result.side_effect = RuntimeError("server failed")
+    shutdown_coro = object()
+    fig._shutdown = Mock(return_value=shutdown_coro)
+    shutdown_future = Mock()
+    fig._run = Mock(return_value=shutdown_future)
+    fig._stop_loop = Mock()
+
+    with raises(RuntimeError, match="server failed"):
+        fig.wait()
+
+    fig._run.assert_called_once_with(shutdown_coro)
+    shutdown_future.result.assert_called_once_with()
+    fig._stop_loop.assert_called_once_with()
+    assert fig._server_future is None
+
+
+def test_fig_shutdown_releases_vtk_resources():
+
+    fig = object.__new__(Figure)
+    fig.server = Mock()
+    fig.server.stop = AsyncMock()
+    fig.view = Mock()
+    fig.win = Mock()
+
+    run(fig._shutdown())
+
+    fig.server.stop.assert_awaited_once_with()
+    fig.view.release_resources.assert_called_once_with()
+    fig.win.Finalize.assert_called_once_with()
+
+
+def test_fig_stop_loop():
+
+    fig = object.__new__(Figure)
+    fig.loop = Mock()
+    fig.thread = Mock()
+    fig._closed = False
+
+    fig._stop_loop()
+
+    fig.loop.call_soon_threadsafe.assert_called_once_with(fig.loop.stop)
+    fig.thread.join.assert_called_once_with()
+    fig.loop.close.assert_called_once_with()
+    assert fig._closed
+
+
+def test_fig_run_rejects_closed_figure():
+
+    fig = object.__new__(Figure)
+    fig._closed = True
+
+    async def noop():
+        pass
+
+    coro = noop()
+
+    with raises(RuntimeError, match="Figure has been shut down"):
+        fig._run(coro)
+
+    assert coro.cr_frame is None
+
+
+def test_fig_wait_free_func(monkeypatch):
+
+    fig = Mock()
+    monkeypatch.setattr(Figure, "_instance", fig)
+    monkeypatch.setattr(Figure, "_initialized", True)
+
+    wait()
+
+    fig.wait.assert_called_once_with()
 
 
 @mark.gui

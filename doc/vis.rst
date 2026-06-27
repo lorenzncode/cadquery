@@ -179,11 +179,39 @@ For non-blocking visualization, one can use the :meth:`cadquery.fig.show` functi
 It relies on VTK/Trame and opens a web browser window.
 To programmatically remove previously added shapes one can use the :meth:`cadquery.fig.clear` function. 
 
-
 .. image:: _static/fig.png
 
-This function is very handy for interactive work and debugging. Alternatively one can use the :class:`~cadquery.fig.Figure`
-class for more fine-grained control.
+This function is very handy for interactive work and debugging in a Python REPL. 
+
+.. code-block::
+
+   $ python
+   >>> from cadquery.func import *
+   >>> from cadquery.fig import show
+   >>> show(box(1, 1, 1))
+   >>>
+
+Alternatively one can use the :class:`~cadquery.fig.Figure` class for more fine-grained control.
+
+Plain Python scripts can also be run from IPython using :code:`%run`.
+Because the IPython session remains active after the script finishes, the figure server continues running without an explicit wait.
+
+.. code-block::
+
+   $ ipython
+   In [1]: %run model.py
+
+When running a script directly with Python, keep the process alive by calling :meth:`cadquery.fig.wait` explicitly.
+Pressing :kbd:`Ctrl+C` shuts down the figure and lets the script exit.
+A figure cannot be reused after it has been shut down.
+
+.. code-block:: python
+
+   from cadquery.func import * 
+   from cadquery.fig import show, wait
+
+   show(box(1, 1, 1))
+   wait()
 
 
 Jupyter/JupterLab
@@ -199,4 +227,3 @@ There is also more limited support for displaying :class:`~cadquery.Workplane`, 
    Workplane().sphere(1).split(keepTop=True)
 
 .. image:: _static/show_jupyter.PNG
-
